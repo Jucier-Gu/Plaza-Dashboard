@@ -1,0 +1,14 @@
+# 忽略 Python 虚拟环境
+venv/
+*.venv/
+
+# 忽略 Python 缓存
+__pycache__/
+*.pyc
+
+# 忽略 VS Code 配置
+.vscode/
+
+# 忽略所有数据文件
+*.csv
+*.xlsx
