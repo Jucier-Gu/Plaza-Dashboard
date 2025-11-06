@@ -1,25 +1,29 @@
+# app.py - 第 7 版 (CSV 每日价格 + Plotly + 复选框 + 修复页面消失)
+
 import streamlit as st
 import pandas as pd
 import numpy as np
 from scipy.stats import norm
-import plotly.graph_objects as go  # Import Plotly
+import plotly.graph_objects as go  # 导入 Plotly
 
 
-# --- Core Analysis Functions (Backend) ---
+# --- 核心分析函数 (后端) ---
+# [calculate_metrics_from_prices, generate_interpretation, load_data_from_csv]
+# [这些函数与上一版完全相同，保持不变]
 @st.cache_data
 def calculate_metrics_from_prices(
     data_df, benchmark_ticker, risk_free_rate=0.02, cvar_alpha=0.05
 ):
     """
-    Calculates all key risk metrics (for the top table)
-    *** Assumes data_df contains daily prices ***
-    *** Returns raw numbers (floats) ***
+    计算所有关键风险指标 (用于顶部的表格)
+    *** 假定 data_df 包含每日价格 ***
+    *** 返回原始数字 (floats) ***
     """
 
     daily_returns = data_df.pct_change().dropna()
 
     if benchmark_ticker not in daily_returns.columns:
-        st.error(f"Error: Benchmark '{benchmark_ticker}' not found in CSV columns.")
+        st.error(f"错误：基准 '{benchmark_ticker}' 在CSV列中未找到。")
         return pd.DataFrame()
 
     benchmark_returns = daily_returns[benchmark_ticker]
@@ -46,9 +50,9 @@ def calculate_metrics_from_prices(
             else np.nan
         )
 
-        fund_prices = data_df[fund]
+        fund_prices = data_df[fund]  # <-- 修复了 NameError
         peak = fund_prices.expanding(min_periods=1).max()
-        drawdown = (fund_prices - peak) / peak
+        drawdown = (fund_prices - peak) / peak  # <-- 修复了 NameError
         max_drawdown = drawdown.min()
 
         var_95 = fund_returns.quantile(cvar_alpha)
@@ -63,175 +67,168 @@ def calculate_metrics_from_prices(
 
         metrics_list.append(
             {
-                "Fund": fund,
-                "Annual. Return": annual_return,
-                "Annual. Volatility": annual_volatility,
-                "Beta": beta,
-                "Sharpe Ratio": sharpe_ratio,
-                "Sortino Ratio": sortino_ratio,
-                "Max Drawdown": max_drawdown,
+                "基金/列名 (Fund)": fund,
+                "年化收益 (Return)": annual_return,
+                "波动率 (Vol)": annual_volatility,
+                "贝塔 (Beta)": beta,
+                "夏普 (Sharpe)": sharpe_ratio,
+                "索提诺 (Sortino)": sortino_ratio,
+                "最大回撤 (Max DD)": max_drawdown,
                 "CVaR (5%)": cvar_95,
-                "RSI (14 Day)": current_rsi,
+                "RSI (14天)": current_rsi,
             }
         )
 
-    return pd.DataFrame(metrics_list).set_index("Fund")
+    return pd.DataFrame(metrics_list).set_index("基金/列名 (Fund)")
 
 
 def generate_interpretation(metrics_df, benchmark_ticker):
-    """Auto-generate interpretations (handles raw numbers)"""
+    """自动生成解读文本 (处理原始数字)"""
     benchmark_metrics = metrics_df.loc[benchmark_ticker]
     st.markdown("---")
-    st.subheader("🤖 Automated Analysis & Suggestions")
+    st.subheader("🤖 自动解读与建议")
 
     for fund in metrics_df.index:
         if fund == benchmark_ticker:
             continue
 
         fund_metrics = metrics_df.loc[fund]
-        st.markdown(f"**Analysis for {fund}:**")
+        st.markdown(f"**关于 {fund} 的分析:**")
 
         try:
-            if fund_metrics["Sharpe Ratio"] > benchmark_metrics["Sharpe Ratio"]:
+            if fund_metrics["夏普 (Sharpe)"] > benchmark_metrics["夏普 (Sharpe)"]:
                 st.success(
-                    f"📈 **Risk-Adjusted Return (Sharpe):** {fund} ({fund_metrics['Sharpe Ratio']:.2f}) is outperforming the benchmark ({benchmark_metrics['Sharpe Ratio']:.2f})."
+                    f"📈 **风险调整后收益 (夏普):** {fund} ({fund_metrics['夏普 (Sharpe)']:.2f}) 优于基准 ({benchmark_metrics['夏普 (Sharpe)']:.2f})。"
                 )
             else:
                 st.warning(
-                    f"📉 **Risk-Adjusted Return (Sharpe):** {fund} ({fund_metrics['Sharpe Ratio']:.2f}) is underperforming the benchmark ({benchmark_metrics['Sharpe Ratio']:.2f})."
+                    f"📉 **风险调整后收益 (夏普):** {fund} ({fund_metrics['夏普 (Sharpe)']:.2f}) 落后于基准 ({benchmark_metrics['夏普 (Sharpe)']:.2f})。"
                 )
 
-            if fund_metrics["Max Drawdown"] > benchmark_metrics["Max Drawdown"]:
+            if (
+                fund_metrics["最大回撤 (Max DD)"]
+                > benchmark_metrics["最大回撤 (Max DD)"]
+            ):
                 st.success(
-                    f"🛡️ **Risk Control (Max Drawdown):** {fund} ({fund_metrics['Max Drawdown']:,.2%}) has a smaller max drawdown than the benchmark ({benchmark_metrics['Max Drawdown']:,.2%}), showing better resilience."
+                    f"🛡️ **风险控制 (最大回撤):** {fund} ({fund_metrics['最大回撤 (Max DD)']:,.2%}) 的历史最大回撤小于基准 ({benchmark_metrics['最大回撤 (Max DD)']:,.2%})，表现出更好的抗跌性。"
                 )
             else:
                 st.warning(
-                    f"🚩 **Risk Control (Max Drawdown):** {fund} ({fund_metrics['Max Drawdown']:,.2%}) has a larger max drawdown than the benchmark ({benchmark_metrics['Max Drawdown']:,.2%})."
+                    f"🚩 **风险控制 (最大回撤):** {fund} ({fund_metrics['最大回撤 (Max DD)']:,.2%}) 的历史最大回撤大于基准 ({benchmark_metrics['最大回撤 (Max DD)']:,.2%})。"
                 )
 
-            rsi = fund_metrics["RSI (14 Day)"]
+            rsi = fund_metrics["RSI (14天)"]
             if rsi > 70:
                 st.warning(
-                    f"🌡️ **Short-Term Signal (RSI):** {fund}'s current RSI is {rsi:.2f}, which is in the 'overbought' territory. A pullback may be possible."
+                    f"🌡️ **短期信号 (RSI):** {fund} 当前的 RSI 为 {rsi:.2f}，处于“超买”区域，可能存在短期回调风险。"
                 )
             elif rsi < 30:
                 st.success(
-                    f"🌡️ **Short-Term Signal (RSI):** {fund}'s current RSI is {rsi:.2f}, which is in the 'oversold' territory. A rebound may be possible."
+                    f"🌡️ **短期信号 (RSI):** {fund} 当前的 RSI 为 {rsi:.2f}，处于“超卖”区域，可能存在短期反弹机会。"
                 )
             else:
                 st.info(
-                    f"🌡️ **Short-Term Signal (RSI):** {fund}'s current RSI is {rsi:.2f}, which is in a neutral zone."
+                    f"🌡️ **短期信号 (RSI):** {fund} 当前的 RSI 为 {rsi:.2f}，处于中性区域。"
                 )
 
         except Exception as e:
-            if pd.isna(fund_metrics["Sharpe Ratio"]) or pd.isna(
-                fund_metrics["RSI (14 Day)"]
+            if pd.isna(fund_metrics["夏普 (Sharpe)"]) or pd.isna(
+                fund_metrics["RSI (14天)"]
             ):
                 st.warning(
-                    f"Could not generate some insights for {fund} (insufficient data, e.g., for RSI)."
+                    f"无法为 {fund} 生成部分解读（数据不足，例如 RSI 无法计算）。"
                 )
             else:
-                st.error(f"Error generating insights for {fund}: {e}.")
+                st.error(f"为 {fund} 生成解读时出错: {e}。")
 
 
 def load_data_from_csv(uploaded_file, date_column, start_date, end_date):
-    """Load, parse, and filter data from the uploaded CSV"""
+    """从上传的 CSV 加载、解析和过滤数据"""
     try:
         df = pd.read_csv(uploaded_file)
         if date_column not in df.columns:
-            st.error(f"Error: Date column '{date_column}' not found in the CSV.")
+            st.error(f"错误: 在 CSV 中未找到指定的日期列 '{date_column}'。")
             return None
         df["Date_Parsed"] = pd.to_datetime(df[date_column])
         df = df.set_index("Date_Parsed")
         df = df.loc[start_date:end_date]
         df_numeric = df.select_dtypes(include=[np.number])
         if df_numeric.empty:
-            st.error("No numerical data found in the specified date range.")
+            st.error("在指定日期范围内没有找到数值数据。")
             return None
         return df_numeric.dropna(axis=1, how="all")
     except Exception as e:
-        st.error(f"Error processing CSV file: {e}")
+        st.error(f"处理 CSV 文件时出错: {e}")
         return None
 
 
-# --- Streamlit Application UI (Frontend) ---
+# --- Streamlit 应用程序 UI (前端) ---
 
-st.set_page_config(layout="wide", page_title="Plaza Fund Risk Dashboard")
-st.title("📈 Plaza Automated Fund Risk Analysis")
-st.info("✅ CSV must contain **Daily Prices**. Charts are rendered with Plotly.")
+st.set_page_config(layout="wide", page_title="Plaza 基金风险仪表盘")
+st.title("📈 Plaza 自动化基金风险分析")
+st.info("✅ CSV 必须包含 **每日价格**。图表使用 Plotly 渲染。")
 
-# --- Fix 1: Initialize session state ---
-# (This flag will be "remembered" across Streamlit reruns)
+# --- (新增) 修复 1: 初始化会话状态 ---
+# (这个 "flag" 会在 streamlit 刷新时被 "记住")
 if "analysis_run" not in st.session_state:
     st.session_state.analysis_run = False
 
-# --- 1. Inputs (Sidebar) ---
-st.sidebar.header("⚙️ Control Panel")
-uploaded_file = st.sidebar.file_uploader("1. Upload Your Fund Data (CSV)", type=["csv"])
-st.sidebar.info("CSV must contain a 'Date' column and daily **Price** columns.")
-date_column = st.sidebar.text_input(
-    "2. Enter the 'Date' column name from your CSV", "Date"
-)
-benchmark_column = st.sidebar.text_input(
-    "3. Enter the 'Benchmark' column name from your CSV", "SP500"
-)
+# --- 1. 输入 (侧边栏) ---
+st.sidebar.header("⚙️ 控制面板")
+uploaded_file = st.sidebar.file_uploader("1. 上传您的基金数据 (CSV)", type=["csv"])
+st.sidebar.info("CSV 必须包含 '日期' 列和每日 **价格** 列。")
+date_column = st.sidebar.text_input("2. 输入 CSV 中的'日期'列名", "Date")
+benchmark_column = st.sidebar.text_input("3. 输入 CSV 中的'基准'列名", "SP500")
 
-start_date = st.sidebar.date_input(
-    "4. Select Analysis Start Date", pd.to_datetime("2020-10-13")
-)
-end_date = st.sidebar.date_input(
-    "5. Select Analysis End Date", pd.to_datetime("2025-10-16")
-)
+start_date = st.sidebar.date_input("4. 选择分析开始日期", pd.to_datetime("2020-10-13"))
+end_date = st.sidebar.date_input("5. 选择分析结束日期", pd.to_datetime("2025-10-16"))
 
-risk_free_rate = (
-    st.sidebar.slider("6. Annual Risk-Free Rate (%)", 0.0, 5.0, 2.0, 0.1) / 100
-)
-run_button = st.sidebar.button("🚀 Run Analysis")
+risk_free_rate = st.sidebar.slider("6. 年化无风险利率 (%)", 0.0, 5.0, 2.0, 0.1) / 100
+run_button = st.sidebar.button("🚀 运行分析")
 
-# --- Fix 2: Update main logic ---
+# --- (新增) 修复 2: 更新主逻辑 ---
 
-# When the button is clicked, set the flag
+# 当按钮被点击时，设置 "flag"
 if run_button:
     st.session_state.analysis_run = True
 
-# Check the "flag", not the "run_button"
+# 检查 "flag"，而不是检查 "run_button"
 if st.session_state.analysis_run:
 
-    # Check if a file has been uploaded
+    # 检查文件是否已上传
     if uploaded_file is not None:
-        with st.spinner("Loading data and calculating metrics..."):
+        with st.spinner("正在加载数据并计算指标..."):
 
-            # Stage 2A: Load and prepare data
+            # 阶段 2A: 加载和准备数据
             raw_data = load_data_from_csv(
                 uploaded_file, date_column, start_date, end_date
             )
 
             if raw_data is not None and not raw_data.empty:
-                # Stage 2B: Calculate
+                # 阶段 2B: 计算
                 metrics_table = calculate_metrics_from_prices(
                     raw_data, benchmark_column, risk_free_rate
                 )
 
                 if not metrics_table.empty:
-                    # Stage 3A: Display the core metrics table
-                    st.subheader("📊 Core Risk Metrics")
+                    # 阶段 3A: 显示核心指标表
+                    st.subheader("📊 核心风险指标对比")
                     st.dataframe(
                         metrics_table.style.format(
                             {
-                                "Annual. Return": "{:.2%}",
-                                "Annual. Volatility": "{:.2%}",
-                                "Beta": "{:.2f}",
-                                "Sharpe Ratio": "{:.2f}",
-                                "Sortino Ratio": "{:.2f}",
-                                "Max Drawdown": "{:.2%}",
+                                "年化收益 (Return)": "{:.2%}",
+                                "波动率 (Vol)": "{:.2%}",
+                                "贝塔 (Beta)": "{:.2f}",
+                                "夏普 (Sharpe)": "{:.2f}",
+                                "索提诺 (Sortino)": "{:.2f}",
+                                "最大回撤 (Max DD)": "{:.2%}",
                                 "CVaR (5%)": "{:.2%}",
-                                "RSI (14 Day)": "{:.2f}",
+                                "RSI (14天)": "{:.2f}",
                             }
                         )
                     )
 
-                    # --- Stage 3B: Prepare all time-series data for charts ---
+                    # --- 阶段 3B: 准备图表所需的所有时间序列数据 ---
                     T = 252
                     daily_returns = raw_data.pct_change().dropna()
                     normalized_returns = (1 + daily_returns).cumprod()
@@ -265,46 +262,42 @@ if st.session_state.analysis_run:
                     rs = gain / loss
                     rsi_series = 100 - (100 / (1 + rs))
 
-                    # --- Stage 3C: Chart Filter (Checkbox Table) ---
+                    # --- 阶段 3C: 图表过滤器 (复选框表格) ---
                     st.divider()
-                    st.subheader("🎨 Chart Filter")
+                    st.subheader("🎨 图表过滤器")
 
                     fund_list = raw_data.columns.tolist()
 
-                    # 1. Create a DataFrame to manage the selection state
                     selection_df = pd.DataFrame(
                         {
-                            "Select": [True] * len(fund_list),  # Default all to True
+                            "Select": [True] * len(fund_list),  # 默认全选
                             "Fund": fund_list,
                         }
                     )
 
-                    st.info(
-                        "Please check the funds you want to display in the charts below:"
-                    )
+                    st.info("请在下表中勾选您想在图表中查看的基金：")
 
-                    # 2. Display the editable checkbox table
                     edited_df = st.data_editor(
                         selection_df,
                         column_config={
                             "Select": st.column_config.CheckboxColumn(
-                                "Select", default=True
+                                "勾选", default=True
                             ),
-                            "Fund": "Fund",
+                            "Fund": "基金",
                         },
                         hide_index=True,
                         width=300,
                     )
 
-                    # 3. Get the list of selected funds from the edited table
                     selected_funds = edited_df[edited_df["Select"]]["Fund"].tolist()
 
                     if not selected_funds:
-                        st.warning("Please select at least one fund to display charts.")
+                        st.warning("请至少选择一只基金来显示图表。")
                     else:
-                        # --- Stage 3D: Plot all charts ---
+                        # --- 阶段 3D: 绘制所有图表 ---
+                        # (这部分代码保持不变，它会正确地使用 selected_funds)
 
-                        st.subheader("📉 Cumulative Returns (Normalized)")
+                        st.subheader("📉 累计收益走势 (归一化)")
                         fig_cum_returns = go.Figure()
                         for col in selected_funds:
                             fig_cum_returns.add_trace(
@@ -318,7 +311,7 @@ if st.session_state.analysis_run:
                         fig_cum_returns.update_layout(hovermode="x unified")
                         st.plotly_chart(fig_cum_returns, use_container_width=True)
 
-                        st.subheader("🌊 20-Day Rolling Volatility")
+                        st.subheader("🌊 滚动波动率 (20天)")
                         fig_roll_vol = go.Figure()
                         rolling_vol_clean = rolling_vol_20d.dropna()
                         for col in selected_funds:
@@ -334,9 +327,9 @@ if st.session_state.analysis_run:
                         fig_roll_vol.update_layout(hovermode="x unified")
                         st.plotly_chart(fig_roll_vol, use_container_width=True)
 
-                        st.subheader("📉 Drawdown (Time Series)")
+                        st.subheader("📉 最大回撤时序图")
                         st.info(
-                            "This chart shows the percentage drop from the fund's historical peak. 0% means a new all-time high."
+                            "这张图显示了基金从其历史高点回撤的百分比。0% 意味着处于历史新高。"
                         )
                         fig_drawdown = go.Figure()
                         drawdown_series_clean = drawdown_series.dropna()
@@ -356,7 +349,7 @@ if st.session_state.analysis_run:
                         )
                         st.plotly_chart(fig_drawdown, use_container_width=True)
 
-                        st.subheader("📊 20-Day Rolling Sharpe Ratio")
+                        st.subheader("📊 滚动夏普比率 (20天)")
                         fig_roll_sharpe = go.Figure()
                         rolling_sharpe_clean = rolling_sharpe_20d.dropna()
                         for col in selected_funds:
@@ -375,7 +368,7 @@ if st.session_state.analysis_run:
                         fig_roll_sharpe.update_layout(hovermode="x unified")
                         st.plotly_chart(fig_roll_sharpe, use_container_width=True)
 
-                        st.subheader("📊 20-Day Rolling Sortino Ratio")
+                        st.subheader("📊 滚动索提诺比率 (20天)")
                         fig_roll_sortino = go.Figure()
                         rolling_sortino_clean = rolling_sortino_20d.dropna()
                         for col in selected_funds:
@@ -394,7 +387,7 @@ if st.session_state.analysis_run:
                         fig_roll_sortino.update_layout(hovermode="x unified")
                         st.plotly_chart(fig_roll_sortino, use_container_width=True)
 
-                        st.subheader("🌡️ Relative Strength Index (RSI, 14-Day)")
+                        st.subheader("🌡️ 相对强弱指数 (RSI, 14天)")
                         fig_rsi = go.Figure()
                         rsi_series_clean = rsi_series.dropna()
                         for col in selected_funds:
@@ -411,35 +404,31 @@ if st.session_state.analysis_run:
                             y=70,
                             line_dash="dot",
                             line_color="red",
-                            annotation_text="Overbought (70)",
+                            annotation_text="超买 (70)",
                         )
                         fig_rsi.add_hline(
                             y=30,
                             line_dash="dot",
                             line_color="green",
-                            annotation_text="Oversold (30)",
+                            annotation_text="超卖 (30)",
                         )
                         fig_rsi.update_layout(
                             hovermode="x unified", yaxis_range=[0, 100]
                         )
                         st.plotly_chart(fig_rsi, use_container_width=True)
 
-                    # --- Stage 3E: Automated Interpretation ---
+                    # --- 阶段 3E: 自动解读 ---
                     generate_interpretation(metrics_table, benchmark_column)
 
-                else:
-                    st.error(
-                        "Data loading failed or the data is empty for the selected date range. Please check your CSV and parameters."
-                    )
-                    st.session_state.analysis_run = False  # Reset "flag"
+            else:
+                st.error("数据加载失败或在指定日期范围内为空。请检查 CSV 和参数。")
+                st.session_state.analysis_run = False  # 重置 "flag"
 
     else:
-        # If "flag" is True, but the file was removed
-        st.warning("⚠️ Please upload a CSV file in the sidebar.")
-        st.session_state.analysis_run = False  # Reset "flag"
+        # 如果 "flag" 是 True，但文件被移除了
+        st.warning("⚠️ 请在侧边栏上传一个 CSV 文件。")
+        st.session_state.analysis_run = False  # 重置 "flag"
 
 else:
-    # Default state (analysis_run == False)
-    st.info(
-        "Please set parameters in the left sidebar and upload a CSV file, then click 'Run Analysis'."
-    )
+    # 默认状态 (analysis_run == False)
+    st.info("请在左侧侧边栏设置参数并上传 CSV 文件，然后点击“运行分析”。")
