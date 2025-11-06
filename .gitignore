@@ -12,3 +12,8 @@ __pycache__/
 # 忽略所有数据文件
 *.csv
 *.xlsx
+# 新增：忽略所有 .txt 文件
+*.txt
+
+# 新增：忽略中文版 app 备份
+appcn.py
