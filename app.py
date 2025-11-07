@@ -38,14 +38,6 @@ def calculate_metrics_from_prices(
 
         sharpe_ratio = (annual_return - risk_free_rate) / annual_volatility
 
-        downside_returns = fund_returns[fund_returns < 0]
-        downside_std = downside_returns.std() * np.sqrt(T)
-        sortino_ratio = (
-            (annual_return - risk_free_rate) / downside_std
-            if downside_std != 0
-            else np.nan
-        )
-
         fund_prices = data_df[fund]
         peak = fund_prices.expanding(min_periods=1).max()
         drawdown = (fund_prices - peak) / peak
@@ -68,7 +60,6 @@ def calculate_metrics_from_prices(
                 "Annual. Volatility": annual_volatility,
                 "Beta": beta,
                 "Sharpe Ratio": sharpe_ratio,
-                "Sortino Ratio": sortino_ratio,
                 "Max Drawdown": max_drawdown,
                 "CVaR (5%)": cvar_95,
                 "RSI (14 Day)": current_rsi,
@@ -221,7 +212,6 @@ if st.session_state.analysis_run:
                                 "Annual. Volatility": "{:.2%}",
                                 "Beta": "{:.2f}",
                                 "Sharpe Ratio": "{:.2f}",
-                                "Sortino Ratio": "{:.2f}",
                                 "Max Drawdown": "{:.2%}",
                                 "CVaR (5%)": "{:.2%}",
                                 "RSI (14 Day)": "{:.2f}",
@@ -250,13 +240,6 @@ if st.session_state.analysis_run:
                     rolling_sharpe_20d = (
                         rolling_annual_return_20d - risk_free_rate
                     ) / rolling_annual_vol_20d
-                    downside_returns = daily_returns.where(daily_returns < 0, np.nan)
-                    rolling_downside_std_20d = downside_returns.rolling(
-                        window=rolling_window_20d
-                    ).std() * np.sqrt(T)
-                    rolling_sortino_20d = (
-                        rolling_annual_return_20d - risk_free_rate
-                    ) / rolling_downside_std_20d
                     delta = raw_data.diff()
                     gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
                     loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
@@ -372,25 +355,6 @@ if st.session_state.analysis_run:
                         )
                         fig_roll_sharpe.update_layout(hovermode="x unified")
                         st.plotly_chart(fig_roll_sharpe, use_container_width=True)
-
-                        st.subheader("📊 20-Day Rolling Sortino Ratio")
-                        fig_roll_sortino = go.Figure()
-                        rolling_sortino_clean = rolling_sortino_20d.dropna()
-                        for col in selected_funds:
-                            if col in rolling_sortino_clean.columns:
-                                fig_roll_sortino.add_trace(
-                                    go.Scatter(
-                                        x=rolling_sortino_clean.index,
-                                        y=rolling_sortino_clean[col],
-                                        mode="lines",
-                                        name=col,
-                                    )
-                                )
-                        fig_roll_sortino.add_hline(
-                            y=0, line_dash="dot", line_color="grey"
-                        )
-                        fig_roll_sortino.update_layout(hovermode="x unified")
-                        st.plotly_chart(fig_roll_sortino, use_container_width=True)
 
                         st.subheader("🌡️ Relative Strength Index (RSI, 14-Day)")
                         fig_rsi = go.Figure()
