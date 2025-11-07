@@ -159,7 +159,6 @@ def load_data_from_csv(uploaded_file, date_column, start_date, end_date):
 
 st.set_page_config(layout="wide", page_title="Plaza Fund Risk Dashboard")
 st.title("📈 Plaza Automated Fund Risk Analysis")
-st.info("✅ CSV must contain **Daily Prices**. Charts are rendered with Plotly.")
 
 # --- Fix 1: Initialize session state ---
 # (This flag will be "remembered" across Streamlit reruns)
@@ -169,7 +168,6 @@ if "analysis_run" not in st.session_state:
 # --- 1. Inputs (Sidebar) ---
 st.sidebar.header("⚙️ Control Panel")
 uploaded_file = st.sidebar.file_uploader("1. Upload Your Fund Data (CSV)", type=["csv"])
-st.sidebar.info("CSV must contain a 'Date' column and daily **Price** columns.")
 date_column = st.sidebar.text_input(
     "2. Enter the 'Date' column name from your CSV", "Date"
 )
@@ -437,9 +435,3 @@ if st.session_state.analysis_run:
         # If "flag" is True, but the file was removed
         st.warning("⚠️ Please upload a CSV file in the sidebar.")
         st.session_state.analysis_run = False  # Reset "flag"
-
-else:
-    # Default state (analysis_run == False)
-    st.info(
-        "Please set parameters in the left sidebar and upload a CSV file, then click 'Run Analysis'."
-    )
